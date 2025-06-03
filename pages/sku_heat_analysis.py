@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import numpy as np
+from sklearn.ensemble import RandomForestRegressor
 
 st.markdown("<h2 style='color:#FF5733;'>📦 SKU 热度分析</h2>", unsafe_allow_html=True)
 
@@ -103,10 +104,20 @@ if "trend_summary" in st.session_state:
         0.1 * trend_df["year_norm"]
     )
 
+    # 随机森林评分
+    feature_cols = ["week_qty", "month_qty", "half_qty", "year_qty"]
+    trend_df["rf_score"] = 0.0
+    try:
+        model = RandomForestRegressor(n_estimators=50, random_state=42)
+        model.fit(trend_df[feature_cols], trend_df["score"])
+        trend_df["rf_score"] = model.predict(trend_df[feature_cols])
+    except Exception as e:
+        st.warning(f"⚠️ 随机森林分析失败: {e}")
+
     top5 = trend_df.sort_values(by="score", ascending=False).head(5)
 
     st.subheader("🔥 AI评分前五 SKU")
-    st.dataframe(top5[["sku", "product", "score"]])
+    st.dataframe(top5[["sku", "product", "score", "rf_score"]])
     fig = px.bar(top5, x="sku", y="score", color="product", title="AI评分前五SKU排行")
     st.plotly_chart(fig)
 
