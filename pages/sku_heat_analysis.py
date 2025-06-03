@@ -3,6 +3,8 @@ import pandas as pd
 import plotly.express as px
 import numpy as np
 from sklearn.ensemble import RandomForestRegressor
+from sklearn.model_selection import train_test_split
+import xgboost as xgb
 
 st.markdown("<h2 style='color:#FF5733;'>📦 SKU 热度分析</h2>", unsafe_allow_html=True)
 
@@ -57,7 +59,7 @@ elif analysis_option == '📊 一次性汇总分析':
     else:
         st.warning("⚠️ 请确保所有数据都已上传并成功读取。")
 
-# 📊 生成趋势表
+# 📊 生成趋势汇总表
 if st.button("📊 生成趋势汇总表"):
     try:
         df_week = st.session_state["df_week"]
@@ -104,22 +106,46 @@ if "trend_summary" in st.session_state:
         0.1 * trend_df["year_norm"]
     )
 
-    # 随机森林评分
-    feature_cols = ["week_qty", "month_qty", "half_qty", "year_qty"]
-    trend_df["rf_score"] = 0.0
-    try:
-        model = RandomForestRegressor(n_estimators=50, random_state=42)
-        model.fit(trend_df[feature_cols], trend_df["score"])
-        trend_df["rf_score"] = model.predict(trend_df[feature_cols])
-    except Exception as e:
-        st.warning(f"⚠️ 随机森林分析失败: {e}")
-
     top5 = trend_df.sort_values(by="score", ascending=False).head(5)
 
     st.subheader("🔥 AI评分前五 SKU")
-    st.dataframe(top5[["sku", "product", "score", "rf_score"]])
+    st.dataframe(top5[["sku", "product", "score"]])
     fig = px.bar(top5, x="sku", y="score", color="product", title="AI评分前五SKU排行")
     st.plotly_chart(fig)
+
+    # ✅ 随机森林预测销量
+    if trend_df.shape[0] >= 5:
+        rf_data = trend_df.copy()
+        X = rf_data[["week_qty", "month_qty", "half_qty"]]
+        y = rf_data["year_qty"]
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+        model = RandomForestRegressor()
+        model.fit(X_train, y_train)
+        rf_data["rf_predicted"] = model.predict(X)
+
+        top5_rf = rf_data.sort_values(by="rf_predicted", ascending=False).head(5)
+        st.subheader("🌲 随机森林预测销量 Top5")
+        st.dataframe(top5_rf[["sku", "product", "rf_predicted"]])
+        fig_rf = px.bar(top5_rf, x="sku", y="rf_predicted", color="product", title="随机森林预测销量Top5")
+        st.plotly_chart(fig_rf)
+
+    # ✅ XGBoost预测销量
+    if trend_df.shape[0] >= 5:
+        xgb_data = trend_df.copy()
+        X = xgb_data[["week_qty", "month_qty", "half_qty"]]
+        y = xgb_data["year_qty"]
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+        xgb_model = xgb.XGBRegressor(objective="reg:squarederror", n_estimators=100)
+        xgb_model.fit(X_train, y_train)
+        xgb_data["xgb_predicted"] = xgb_model.predict(X)
+
+        top5_xgb = xgb_data.sort_values(by="xgb_predicted", ascending=False).head(5)
+        st.subheader("📈 XGBoost预测销量 Top5")
+        st.dataframe(top5_xgb[["sku", "product", "xgb_predicted"]])
+        fig_xgb = px.bar(top5_xgb, x="sku", y="xgb_predicted", color="product", title="XGBoost预测销量Top5")
+        st.plotly_chart(fig_xgb)
 
 # 🔁 刷新
 if st.button("🔁 刷新当前页面"):
