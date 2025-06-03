@@ -1,0 +1,6 @@
+pyqrcode
+pypng
+streamlit
+gspread
+oauth2client
+pandas
