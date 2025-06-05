@@ -55,7 +55,7 @@ try:
             logo = Image.open(LOGO_PATH).convert("RGBA")
 
             qr_width, qr_height = qr_img.size
-            logo_size = int(qr_width * 0.25)
+            logo_size = int(qr_width * 0.20)
             logo = logo.resize((logo_size, logo_size), Image.LANCZOS)
             pos = ((qr_width - logo_size) // 2, (qr_height - logo_size) // 2)
 
