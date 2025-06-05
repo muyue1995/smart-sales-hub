@@ -2,12 +2,15 @@ import streamlit as st
 import pandas as pd
 import pyqrcode
 import io
+from PIL import Image
+import os
+
 from utils.google_sheets import read_sheet_as_df, write_df_to_sheet
 
 SHEET_ID = "1RZPckQc6x8pD3kVLN58FpVqsb985ILH-z4q5h9R7oRU"
+LOGO_PATH = "Image/logo.png"  # 修改为你的 logo 文件名（已上传的 PNG）
 
 st.title("📎 QR Code 管理")
-
 st.markdown("此功能能从 Google Sheet 实时读取 SKU 对应 URL，用于生成 QR Code 并管理跳转链接。")
 
 # 读取数据
@@ -40,11 +43,31 @@ try:
         selected_sku = st.selectbox("请选择 SKU", filtered_df["sku"].unique())
         selected_url = df[df["sku"] == selected_sku]["url"].values[0]
 
+        # 生成二维码
         qr = pyqrcode.create(selected_url)
         buffer = io.BytesIO()
-        qr.png(buffer, scale=6)
-        st.image(buffer.getvalue(), caption=f"SKU: {selected_sku}")
+        qr.png(buffer, scale=10)
+        buffer.seek(0)
+        qr_img = Image.open(buffer).convert("RGBA")
 
+        # 嵌入 Logo 图像
+        if os.path.exists(LOGO_PATH):
+            logo = Image.open(LOGO_PATH).convert("RGBA")
+
+            qr_width, qr_height = qr_img.size
+            logo_size = int(qr_width * 0.25)
+            logo = logo.resize((logo_size, logo_size), Image.LANCZOS)
+            pos = ((qr_width - logo_size) // 2, (qr_height - logo_size) // 2)
+
+            qr_img.paste(logo, pos, mask=logo)
+
+            buffer = io.BytesIO()
+            qr_img.save(buffer, format="PNG")
+            buffer.seek(0)
+        else:
+            st.warning("⚠️ 未找到 logo 图像，已生成普通二维码。")
+
+        st.image(buffer.getvalue(), caption=f"SKU: {selected_sku}")
         st.download_button(
             label="⬇️ 下载 QR Code PNG",
             data=buffer.getvalue(),
@@ -67,7 +90,7 @@ try:
             st.success(f"✅ SKU {selected_sku} 已成功删除")
             st.rerun()
 
-        # 可折叠数据展示
+        # 展示所有 SKU 数据
         with st.expander("📋 展示所有 SKU 数据（点击展开）"):
             st.dataframe(df)
 
