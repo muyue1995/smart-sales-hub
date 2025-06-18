@@ -14,8 +14,8 @@ LOGO_PATH = "Image/logo.png"  # Logo 图片路径
 st.title("📎 QR Code 管理")
 st.markdown("此功能能从 Google Sheet 实时读取 SKU 对应 URL，用于生成 QR Code 并管理跳转链接。")
 
-# 圆角处理函数
-def add_rounded_corners(image, radius=40):
+# 圆角函数
+def add_rounded_corners(image, radius):
     circle = Image.new("L", (radius * 2, radius * 2), 0)
     draw = ImageDraw.Draw(circle)
     draw.ellipse((0, 0, radius * 2, radius * 2), fill=255)
@@ -30,7 +30,6 @@ def add_rounded_corners(image, radius=40):
     image.putalpha(alpha)
     return image
 
-# 读取数据
 try:
     df = read_sheet_as_df(SHEET_ID)
     if "sku" not in df.columns or "url" not in df.columns:
@@ -52,7 +51,7 @@ try:
                     st.success("✅ 新 SKU 已添加！请从下方选择查看二维码。")
                     st.rerun()
 
-        # 搜索 SKU
+        # 搜索并选择 SKU
         st.markdown("### 🔍 搜索 SKU 并生成 QR Code")
         keyword = st.text_input("输入 SKU 关键词搜索")
         filtered_df = df[df["sku"].str.contains(keyword, case=False, na=False)] if keyword else df
@@ -60,35 +59,35 @@ try:
         selected_sku = st.selectbox("请选择 SKU", filtered_df["sku"].unique())
         selected_url = df[df["sku"] == selected_sku]["url"].values[0]
 
-        # 生成 QR Code
+        # ✅ 生成 QR Code 并固定大小为 400x400
         qr = pyqrcode.create(selected_url)
         buffer = io.BytesIO()
         qr.png(buffer, scale=10)
         buffer.seek(0)
         qr_img = Image.open(buffer).convert("RGBA")
+        qr_img = qr_img.resize((400, 400), Image.LANCZOS)
 
-        # 替换颜色为灰色 #494D4D (RGB: 73, 77, 77)
+        # ✅ 替换黑色为灰色 #494D4D
         data = np.array(qr_img)
         r, g, b, a = data.T
         black_areas = (r == 0) & (g == 0) & (b == 0)
         data[..., :-1][black_areas.T] = (73, 77, 77)
         qr_img = Image.fromarray(data)
 
-        # 加圆角边缘
-        qr_img = add_rounded_corners(qr_img, radius=40)
+        # ✅ 加圆角（半径为图像宽度 20%）
+        qr_img = add_rounded_corners(qr_img, radius=int(400 * 0.2))
 
-        # 嵌入 Logo 图像
+        # ✅ 嵌入 Logo
         if os.path.exists(LOGO_PATH):
             logo = Image.open(LOGO_PATH).convert("RGBA")
-            qr_width, qr_height = qr_img.size
-            logo_size = int(qr_width * 0.20)
+            logo_size = int(400 * 0.20)
             logo = logo.resize((logo_size, logo_size), Image.LANCZOS)
-            pos = ((qr_width - logo_size) // 2, (qr_height - logo_size) // 2)
+            pos = ((400 - logo_size) // 2, (400 - logo_size) // 2)
             qr_img.paste(logo, pos, mask=logo)
         else:
             st.warning("⚠️ 未找到 logo 图像，已生成普通二维码。")
 
-        # 显示和下载
+        # 显示和下载二维码
         output_buffer = io.BytesIO()
         qr_img.save(output_buffer, format="PNG")
         output_buffer.seek(0)
@@ -110,6 +109,7 @@ try:
             st.success("✅ 链接已更新并同步至 Google Sheet")
             st.rerun()
 
+        # 删除 SKU
         if st.button("🗑 删除当前 SKU"):
             df = df[df["sku"] != selected_sku]
             write_df_to_sheet(SHEET_ID, df)
