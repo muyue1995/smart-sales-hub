@@ -2,16 +2,33 @@ import streamlit as st
 import pandas as pd
 import pyqrcode
 import io
-from PIL import Image
+from PIL import Image, ImageDraw
 import os
+import numpy as np
 
 from utils.google_sheets import read_sheet_as_df, write_df_to_sheet
 
 SHEET_ID = "1RZPckQc6x8pD3kVLN58FpVqsb985ILH-z4q5h9R7oRU"
-LOGO_PATH = "Image/logo.png"  # 修改为你的 logo 文件名（已上传的 PNG）
+LOGO_PATH = "Image/logo.png"  # Logo 图片路径
 
 st.title("📎 QR Code 管理")
 st.markdown("此功能能从 Google Sheet 实时读取 SKU 对应 URL，用于生成 QR Code 并管理跳转链接。")
+
+# 圆角处理函数
+def add_rounded_corners(image, radius=40):
+    circle = Image.new("L", (radius * 2, radius * 2), 0)
+    draw = ImageDraw.Draw(circle)
+    draw.ellipse((0, 0, radius * 2, radius * 2), fill=255)
+    alpha = Image.new("L", image.size, 255)
+
+    w, h = image.size
+    alpha.paste(circle.crop((0, 0, radius, radius)), (0, 0))
+    alpha.paste(circle.crop((0, radius, radius, radius * 2)), (0, h - radius))
+    alpha.paste(circle.crop((radius, 0, radius * 2, radius)), (w - radius, 0))
+    alpha.paste(circle.crop((radius, radius, radius * 2, radius * 2)), (w - radius, h - radius))
+
+    image.putalpha(alpha)
+    return image
 
 # 读取数据
 try:
@@ -43,34 +60,43 @@ try:
         selected_sku = st.selectbox("请选择 SKU", filtered_df["sku"].unique())
         selected_url = df[df["sku"] == selected_sku]["url"].values[0]
 
-        # 生成二维码
+        # 生成 QR Code
         qr = pyqrcode.create(selected_url)
         buffer = io.BytesIO()
         qr.png(buffer, scale=10)
         buffer.seek(0)
         qr_img = Image.open(buffer).convert("RGBA")
 
+        # 替换颜色为灰色 #494D4D (RGB: 73, 77, 77)
+        data = np.array(qr_img)
+        r, g, b, a = data.T
+        black_areas = (r == 0) & (g == 0) & (b == 0)
+        data[..., :-1][black_areas.T] = (73, 77, 77)
+        qr_img = Image.fromarray(data)
+
+        # 加圆角边缘
+        qr_img = add_rounded_corners(qr_img, radius=40)
+
         # 嵌入 Logo 图像
         if os.path.exists(LOGO_PATH):
             logo = Image.open(LOGO_PATH).convert("RGBA")
-
             qr_width, qr_height = qr_img.size
             logo_size = int(qr_width * 0.20)
             logo = logo.resize((logo_size, logo_size), Image.LANCZOS)
             pos = ((qr_width - logo_size) // 2, (qr_height - logo_size) // 2)
-
             qr_img.paste(logo, pos, mask=logo)
-
-            buffer = io.BytesIO()
-            qr_img.save(buffer, format="PNG")
-            buffer.seek(0)
         else:
             st.warning("⚠️ 未找到 logo 图像，已生成普通二维码。")
 
-        st.image(buffer.getvalue(), caption=f"SKU: {selected_sku}")
+        # 显示和下载
+        output_buffer = io.BytesIO()
+        qr_img.save(output_buffer, format="PNG")
+        output_buffer.seek(0)
+
+        st.image(output_buffer.getvalue(), caption=f"SKU: {selected_sku}")
         st.download_button(
             label="⬇️ 下载 QR Code PNG",
-            data=buffer.getvalue(),
+            data=output_buffer.getvalue(),
             file_name=f"{selected_sku}_qrcode.png",
             mime="image/png"
         )
